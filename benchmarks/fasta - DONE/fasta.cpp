@@ -20,6 +20,27 @@ with these flags -std=c++17 -march=native -O3 -msse -msse2 -msse3
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <string_view>
+
+template <typename Text>
+constexpr auto text_data(const Text& text) -> decltype(text.data()) {
+    return text.data();
+}
+
+template <std::size_t N>
+constexpr const char* text_data(const char (&text)[N]) {
+    return text;
+}
+
+template <typename Text>
+constexpr std::size_t text_size(const Text& text) {
+    return text.size();
+}
+
+template <std::size_t N>
+constexpr std::size_t text_size(const char (&text)[N]) {
+    return N - 1;
+}
 
 struct Config
 {
@@ -61,7 +82,8 @@ public:
                                Config::max_threads );
     }
 
-    inline void SyncOutput( unsigned index, const auto& function ) {
+    template <typename Function>
+    inline void SyncOutput( unsigned index, const Function& function ) {
         std::unique_lock lock(_out_mutex);
         _cv.wait( lock, [=]{ return index == _out_sequence; });
         function();
@@ -69,20 +91,22 @@ public:
         _cv.notify_all();
     }
 
-    auto Make( const std::string_view& text, unsigned size, auto output ) {
+    template <typename Output>
+    auto Make( const std::string_view& text, unsigned size, Output output ) {
         unsigned id = _id_ctr++;
         auto& proc = _proc[ _proc_ctr++ ];
         return [=, &proc]( ThreadMgr::Context& tdata ) {
             if( proc.once.exchange(false) )
                 this->SyncOutput( id, [&]{
-                std::fwrite( text.data(), 1, text.size(), Config::output );
+                std::fwrite( text_data(text), 1, text_size(text), Config::output );
                 output( size, tdata );
             });
         };
     }
 
+    template <typename Generate, typename Convert, typename Output>
     auto Make( const std::string_view& text, unsigned size,
-               auto generate, auto convert, auto output ) {
+               Generate generate, Convert convert, Output output ) {
         unsigned work_count = std::clamp( size / _threads,
                                           Config::min_thread_work,
                                           Config::max_thread_buff );
@@ -95,7 +119,7 @@ public:
         return [=, &proc]( ThreadMgr::Context& tdata ) {
             if( proc.once.exchange(false) )
                 this->SyncOutput( id, [&] {
-                std::fwrite( text.data(), 1, text.size(), Config::output );
+                std::fwrite( text_data(text), 1, text_size(text), Config::output );
             });
 
             unsigned start_index = id + 1;
@@ -128,7 +152,8 @@ public:
         };
     }
 
-    void RunSequence( auto... f ){
+    template <typename... Functions>
+    void RunSequence( Functions... f ){
         static_assert( sizeof...(f) <= Config::max_proc,
                        "function chain is too large, "
                        "increase Config::max_proc." );

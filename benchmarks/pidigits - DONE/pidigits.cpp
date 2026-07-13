@@ -7,36 +7,35 @@
 
 #include <iostream>
 #include <gmpxx.h>
-#include <boost/lexical_cast.hpp>
-#include <boost/tuple/tuple.hpp>
+#include <tuple>
+#include <string>
+#include <cstdlib>
 #include <algorithm>
-
-using namespace boost;
 
 class Digits {
 private:
   unsigned int j;
-  tuple<mpz_class, mpz_class, mpz_class> nad;
+  std::tuple<mpz_class, mpz_class, mpz_class> nad;
   mpz_class tmp1, tmp2;
 
 public:
-  Digits() { j = 0; get<0>(nad) = 1; get<1>(nad) = 0; get<2>(nad) = 1; }
+  Digits() { j = 0; std::get<0>(nad) = 1; std::get<1>(nad) = 0; std::get<2>(nad) = 1; }
 
   inline char operator()() {
     ++j;
     next_term();
 
-    if(get<0>(nad) > get<1>(nad)) return (*this)();
+    if(std::get<0>(nad) > std::get<1>(nad)) return (*this)();
 
-    mpz_mul_2exp(tmp1.get_mpz_t(), get<0>(nad).get_mpz_t(), 1);
-    tmp1 += get<0>(nad);
-    tmp1 += get<1>(nad);
+    mpz_mul_2exp(tmp1.get_mpz_t(), std::get<0>(nad).get_mpz_t(), 1);
+    tmp1 += std::get<0>(nad);
+    tmp1 += std::get<1>(nad);
 
-    mpz_fdiv_qr(tmp1.get_mpz_t(), tmp2.get_mpz_t(), tmp1.get_mpz_t(), get<2>(nad).get_mpz_t());
+    mpz_fdiv_qr(tmp1.get_mpz_t(), tmp2.get_mpz_t(), tmp1.get_mpz_t(), std::get<2>(nad).get_mpz_t());
 
-    tmp2 += get<0>(nad);
+    tmp2 += std::get<0>(nad);
 
-    if(tmp2 >= get<2>(nad)) {
+    if(tmp2 >= std::get<2>(nad)) {
       return (*this)();
     } else {
       unsigned int d = tmp1.get_ui();
@@ -49,17 +48,17 @@ private:
 
   inline void next_term() {
     unsigned int y = j * 2 + 1;
-    mpz_mul_2exp(tmp1.get_mpz_t(), get<0>(nad).get_mpz_t(), 1);
-    get<1>(nad) += tmp1;
-    get<1>(nad) *= y;
-    get<0>(nad) *= j;
-    get<2>(nad) *= y;
+    mpz_mul_2exp(tmp1.get_mpz_t(), std::get<0>(nad).get_mpz_t(), 1);
+    std::get<1>(nad) += tmp1;
+    std::get<1>(nad) *= y;
+    std::get<0>(nad) *= j;
+    std::get<2>(nad) *= y;
   }
 
   inline void eliminate_digit(unsigned int d) {
-    mpz_submul_ui(get<1>(nad).get_mpz_t(), get<2>(nad).get_mpz_t(), d);
-    get<0>(nad) *= 10;
-    get<1>(nad) *= 10;
+    mpz_submul_ui(std::get<1>(nad).get_mpz_t(), std::get<2>(nad).get_mpz_t(), d);
+    std::get<0>(nad) *= 10;
+    std::get<1>(nad) *= 10;
   }
 
 };
@@ -90,7 +89,7 @@ void pi(unsigned int n) {
 
 int main(int argc, char** argv) {
   std::cout.sync_with_stdio(false);
-  unsigned int count = (argc >= 2 ? boost::lexical_cast<unsigned int>(argv[1]) : 10000);
+  unsigned int count = (argc >= 2 ? static_cast<unsigned int>(std::stoul(argv[1])) : 10000);
   pi(count);
   return 0;
 }

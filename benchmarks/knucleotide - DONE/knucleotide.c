@@ -12,16 +12,102 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <khash.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-// Define a custom hash function to use instead of khash's default hash
-// function. This custom hash function uses a simpler bit shift and XOR which
-// results in several percent faster performance compared to when khash's
-// default hash function is used.
-#define CUSTOM_HASH_FUNCTION(key) ((key) ^ (key)>>7)
+typedef struct {
+    uint64_t key;
+    uint32_t value;
+    int used;
+} kh_entry;
 
-KHASH_INIT(oligonucleotide, uint64_t, uint32_t, 1, CUSTOM_HASH_FUNCTION
-  , kh_int64_hash_equal)
+typedef struct {
+    kh_entry *entries;
+    size_t capacity;
+    size_t size;
+} khash_oligonucleotide;
+
+typedef int khiter_t;
+
+static khash_oligonucleotide *kh_init_oligonucleotide(void) {
+    khash_oligonucleotide *table = calloc(1, sizeof(*table));
+    if (!table) return NULL;
+    table->capacity = 64;
+    table->entries = calloc(table->capacity, sizeof(*table->entries));
+    return table;
+}
+
+static void kh_destroy_oligonucleotide(khash_oligonucleotide *table) {
+    free(table->entries);
+    free(table);
+}
+
+static int kh_put_oligonucleotide(khash_oligonucleotide *table, uint64_t key, int *unused) {
+    if (!table) return -1;
+    if (table->size * 2U >= table->capacity) {
+        size_t new_capacity = table->capacity * 2U;
+        kh_entry *new_entries = calloc(new_capacity, sizeof(*new_entries));
+        if (!new_entries) return -1;
+        for (size_t i = 0; i < table->capacity; ++i) {
+            if (table->entries[i].used) {
+                size_t idx = table->entries[i].key % new_capacity;
+                while (new_entries[idx].used) idx = (idx + 1U) % new_capacity;
+                new_entries[idx] = table->entries[i];
+            }
+        }
+        free(table->entries);
+        table->entries = new_entries;
+        table->capacity = new_capacity;
+    }
+
+    size_t idx = key % table->capacity;
+    while (table->entries[idx].used && table->entries[idx].key != key) {
+        idx = (idx + 1U) % table->capacity;
+    }
+
+    if (table->entries[idx].used) {
+        *unused = 0;
+        return (int)idx;
+    }
+
+    table->entries[idx].key = key;
+    table->entries[idx].value = 0;
+    table->entries[idx].used = 1;
+    table->size++;
+    *unused = 1;
+    return (int)idx;
+}
+
+static khiter_t kh_get_oligonucleotide(khash_oligonucleotide *table, uint64_t key) {
+    if (!table) return -1;
+    size_t idx = key % table->capacity;
+    while (table->entries[idx].used) {
+        if (table->entries[idx].key == key) return (khiter_t)idx;
+        idx = (idx + 1U) % table->capacity;
+    }
+    return -1;
+}
+
+#define khash_t(name) khash_##name
+#define kh_init(name) kh_init_oligonucleotide()
+#define kh_destroy(name, table) kh_destroy_oligonucleotide(table)
+#define kh_put(name, table, key, unused) kh_put_oligonucleotide(table, key, unused)
+#define kh_get(name, table, key) kh_get_oligonucleotide(table, key)
+#define kh_value(table, k) ((table)->entries[(k)].value)
+#define kh_size(table) ((table)->size)
+#define kh_end(table) (-1)
+#define kh_foreach(table, key, value, block) \
+    do { \
+        for (size_t __i = 0; __i < (table)->capacity; ++__i) { \
+            if ((table)->entries[__i].used) { \
+                uint64_t key = (table)->entries[__i].key; \
+                uint32_t value = (table)->entries[__i].value; \
+                block; \
+            } \
+        } \
+    } while (0)
 
 // intptr_t should be the native integer type on most sane systems.
 typedef intptr_t intnative_t;

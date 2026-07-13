@@ -13,11 +13,12 @@ Building checked in Ubuntu 10.4 with g++ 4.4 (both x86 and amd64).
 #include <cassert>
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 using std::copy;using std::max;using std::min; using std::atoi;
 using std::printf;using std::swap;
 //threads stuff
-#include <boost/thread.hpp>
-using boost::thread;using boost::thread_group;using boost::ref;
+#include <thread>
+using std::thread;
 
 struct P{//permutation
     char data[16];
@@ -148,16 +149,19 @@ int main(int argc, char* argv[])
     const unsigned max_cpu_limit = 4;
     Task parts[max_cpu_limit];
     unsigned n = min(n_cpu, max_cpu_limit);
-    thread_group tg;
+    std::vector<std::thread> threads;
+    threads.reserve(n);
     int index = 0;
     int index_max = fact[len]; 
     int index_step = (index_max + n-1)/n;
     for(unsigned i = 0; i<n; ++i, index += index_step){
         Task& p = parts[i];
         p.init(fact, len, index, index + index_step);
-        tg.create_thread(ref(p));
+        threads.emplace_back([&p]() { p(); });
     }
-    tg.join_all();
+    for (auto& thread : threads) {
+        thread.join();
+    }
     for(unsigned i = 0; i<n; ++i){
         Task const& p = parts[i];
         r.maxflips = max( p.r.maxflips, r.maxflips );

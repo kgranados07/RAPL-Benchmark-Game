@@ -41,7 +41,7 @@ do
         c)
             echo "C: $benchmark/$filename"
             if need_cmd gcc "C"; then
-                if ! gcc -O3 -fopenmp "$file" -o "$outdir/${basename}_c" -lm; then
+                if ! gcc -O3 -fopenmp "$file" -o "$outdir/${basename}_c" -lm -lgmp; then
                     echo "Failed to compile $benchmark/$filename"
                 fi
             fi
@@ -50,7 +50,7 @@ do
         cpp|cc|cxx)
             echo "C++: $benchmark/$filename"
             if need_cmd g++ "C++"; then
-                if ! g++ -O3 -fopenmp "$file" -o "$outdir/${basename}_cpp" -lm; then
+                if ! g++ -O3 -fopenmp -std=c++17 -pthread "$file" -o "$outdir/${basename}_cpp" -lm -lgmp; then
                     echo "Failed to compile $benchmark/$filename"
                 fi
             fi

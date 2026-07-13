@@ -11,9 +11,47 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/types.h>
 
 typedef off_t off64_t; // This is needed to keep APR happy on 32 bit systems.
-#include <apr_pools.h>
+
+typedef struct apr_pool_block {
+   struct apr_pool_block * next;
+   size_t size;
+   void * data;
+} apr_pool_block;
+
+typedef struct apr_pool_t {
+   apr_pool_block * head;
+} apr_pool_t;
+
+static void apr_initialize(void) {}
+static void apr_terminate(void) {}
+static int apr_pool_create_unmanaged(apr_pool_t ** pool) {
+   *pool = calloc(1, sizeof(apr_pool_t));
+   return 0;
+}
+static void * apr_palloc(apr_pool_t * pool, size_t size) {
+   void * data = calloc(1, size);
+   apr_pool_block * block = calloc(1, sizeof(apr_pool_block));
+   block->data = data;
+   block->size = size;
+   block->next = pool->head;
+   pool->head = block;
+   return data;
+}
+static void apr_pool_clear(apr_pool_t * pool) {
+   while(pool->head){
+      apr_pool_block * next = pool->head->next;
+      free(pool->head->data);
+      free(pool->head);
+      pool->head = next;
+   }
+}
+static void apr_pool_destroy(apr_pool_t * pool) {
+   apr_pool_clear(pool);
+   free(pool);
+}
 
 // intptr_t should be the native integer type on most sane systems.
 typedef intptr_t intnative_t;
