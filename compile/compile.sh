@@ -1,140 +1,100 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+benchmarks_dir="$repo_root/benchmarks"
+bin_dir="$repo_root/bin"
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BENCHMARKS="$ROOT/benchmarks"
-BIN="$ROOT/bin"
+mkdir -p "$bin_dir"
 
-mkdir -p "$BIN"
+if [[ ! -d "$benchmarks_dir" ]]; then
+    echo "Benchmarks directory not found: $benchmarks_dir" >&2
+    exit 1
+fi
 
-need_cmd() {
-    local cmd="$1"
-    local label="$2"
-    if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "Skipping $label ($cmd not found)"
-        return 1
-    fi
-    return 0
-}
+compile_source() {
+    local source_file="$1"
+    local benchmark_dir="$2"
+    local benchmark_name="$3"
+    local output_dir="$bin_dir/$benchmark_name"
+    local base_name
+    local stem
+    local extension
 
-copy_source() {
-    local src="$1"
-    local dest_dir="$2"
-    cp "$src" "$dest_dir/$(basename "$src")"
-}
+    mkdir -p "$output_dir"
 
-echo "Compiling benchmarks..."
-
-find "$BENCHMARKS" -type f | while read -r file
-do
-    benchmark=$(basename "$(dirname "$file")")
-    filename=$(basename "$file")
-    extension="${filename##*.}"
-    basename="${filename%.*}"
-
-    outdir="$BIN/$benchmark"
-    mkdir -p "$outdir"
+    base_name="$(basename "$source_file")"
+    stem="${base_name%.*}"
+    extension="${base_name##*.}"
 
     case "$extension" in
-
         c)
-            echo "C: $benchmark/$filename"
-            if need_cmd gcc "C"; then
-                if ! gcc -O3 -fopenmp "$file" -o "$outdir/${basename}_c" -lm -lgmp; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            fi
+            gcc -O2 -o "$output_dir/$stem" "$source_file"
             ;;
-
-        cpp|cc|cxx)
-            echo "C++: $benchmark/$filename"
-            if need_cmd g++ "C++"; then
-                if ! g++ -O3 -fopenmp -std=c++17 -pthread "$file" -o "$outdir/${basename}_cpp" -lm -lgmp; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            fi
+        cc|cpp|cxx)
+            g++ -O2 -std=c++17 -o "$output_dir/$stem" "$source_file"
             ;;
-
         cs)
-            echo "C#: $benchmark/$filename"
-            if need_cmd dotnet "C#"; then
-                if ! dotnet build -c Release "$file" -o "$outdir" --property:AllowUnsafeBlocks=true; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            elif need_cmd csc "C#"; then
-                if ! csc -out:"$outdir/${basename}_cs.exe" -unsafe "$file"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
+            if command -v mcs >/dev/null 2>&1; then
+                mcs -out:"$output_dir/$stem.exe" "$source_file"
+                mv "$output_dir/$stem.exe" "$output_dir/$stem"
+            elif command -v csc >/dev/null 2>&1; then
+                csc /out:"$output_dir/$stem.exe" "$source_file"
+                mv "$output_dir/$stem.exe" "$output_dir/$stem"
+            else
+                cp "$source_file" "$output_dir/$base_name"
             fi
             ;;
-
-        rs)
-            echo "Rust: $benchmark/$filename"
-            if need_cmd rustc "Rust"; then
-                if ! rustc -O -C target-cpu=native -C codegen-units=1 "$file" -o "$outdir/${basename}_rust"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            fi
-            ;;
-
         go)
-            echo "Go: $benchmark/$filename"
-            if need_cmd go "Go"; then
-                if ! go build -o "$outdir/${basename}_go" "$file"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
+            if command -v go >/dev/null 2>&1; then
+                GO111MODULE=on go build -o "$output_dir/$stem" "$source_file"
+            else
+                cp "$source_file" "$output_dir/$base_name"
             fi
             ;;
-
-        java)
-            echo "Java: $benchmark/$filename"
-            if need_cmd javac "Java"; then
-                if ! javac -d "$outdir" "$file"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            fi
-            ;;
-
-        scala)
-            echo "Scala: $benchmark/$filename"
-            if need_cmd scalac "Scala"; then
-                if ! scalac -d "$outdir" "$file"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
-            fi
-            ;;
-
         hs)
-            echo "Haskell: $benchmark/$filename"
-            if need_cmd ghc "Haskell"; then
-                if ! ghc -O2 "$file" -o "$outdir/${basename}_hs" -outputdir "$outdir"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
+            if command -v ghc >/dev/null 2>&1; then
+                ghc -O2 -o "$output_dir/$stem" "$source_file"
+            else
+                cp "$source_file" "$output_dir/$base_name"
             fi
             ;;
-
-        ml)
-            echo "OCaml: $benchmark/$filename"
-            if need_cmd ocamlopt "OCaml"; then
-                if ! ocamlopt -o "$outdir/${basename}_ocaml" "$file"; then
-                    echo "Failed to compile $benchmark/$filename"
-                fi
+        java)
+            if command -v javac >/dev/null 2>&1; then
+                mkdir -p "$output_dir/classes"
+                javac -d "$output_dir/classes" "$source_file"
+                cp "$output_dir/classes/$stem.class" "$output_dir/$stem.class"
+            else
+                cp "$source_file" "$output_dir/$base_name"
             fi
             ;;
-
-        py|rb|js|lua|php)
-            echo "$extension: $benchmark/$filename (copying to output)"
-            copy_source "$file" "$outdir"
+        js|lua|ml|php|pl|py|rb|scala|yarv)
+            cp "$source_file" "$output_dir/$base_name"
             ;;
-
+        rs)
+            if command -v rustc >/dev/null 2>&1; then
+                rustc -O -o "$output_dir/$stem" "$source_file"
+            else
+                cp "$source_file" "$output_dir/$base_name"
+            fi
+            ;;
         *)
-            echo "Copying unknown file: $filename"
-            copy_source "$file" "$outdir"
+            cp "$source_file" "$output_dir/$base_name"
             ;;
-
     esac
+}
 
-done
+while IFS= read -r benchmark_dir; do
+    [[ -d "$benchmark_dir" ]] || continue
 
-echo "Done."
+    benchmark_name="$(basename "$benchmark_dir")"
+    echo "Processing $benchmark_name"
+
+    while IFS= read -r source_file; do
+        [[ -f "$source_file" ]] || continue
+        compile_source "$source_file" "$benchmark_dir" "$benchmark_name"
+    done < <(find "$benchmark_dir" -maxdepth 1 -type f | sort)
+done < <(find "$benchmarks_dir" -mindepth 1 -maxdepth 1 -type d | sort)
+
+echo "Compilation complete. Outputs are in $bin_dir"
